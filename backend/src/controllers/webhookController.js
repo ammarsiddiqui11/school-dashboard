@@ -14,11 +14,11 @@ exports.handleWebhook = async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid payload: no order_info' });
     }
 
-    // 🔎 Extract identifiers
+    //  Extract identifiers
     const order_id_field = order_info.order_id || order_info.collect_id || null;
     let orderStatus = null;
 
-    // 🔹 First try: match by gateway_collect_id (Edviron sends this)
+    //  First try: match by gateway_collect_id (Edviron sends this)
     if (order_id_field) {
       orderStatus = await OrderStatus.findOneAndUpdate(
         { gateway_collect_id: order_id_field },
@@ -37,7 +37,7 @@ exports.handleWebhook = async (req, res, next) => {
       );
     }
 
-    // 🔹 Second try: by custom_order_id
+    //  Second try: by custom_order_id
     if (!orderStatus && order_info.custom_order_id) {
       orderStatus = await OrderStatus.findOneAndUpdate(
         { custom_order_id: order_info.custom_order_id },
@@ -46,7 +46,7 @@ exports.handleWebhook = async (req, res, next) => {
       );
     }
 
-    // 🔹 If not found, create a new status entry linked to Order
+    //  If not found, create a new status entry linked to Order
     if (!orderStatus) {
       let order = null;
       if (order_id_field && order_id_field.match && order_id_field.match(/^[0-9a-fA-F]{24}$/)) {
