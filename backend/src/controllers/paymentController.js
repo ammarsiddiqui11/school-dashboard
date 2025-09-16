@@ -161,7 +161,7 @@ exports.getTransactionStatus = async (req, res, next) => {
 // ✅ Get all transactions
 exports.getAllTransactions = async (req, res, next) => {
   try {
-    const statuses = await OrderStatus.find();
+    const statuses = await OrderStatus.find().populate("collect_id");
     res.json(statuses);
   } catch (err) {
     next(err);

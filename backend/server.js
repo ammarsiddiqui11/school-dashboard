@@ -19,7 +19,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api', transactionsRoutes);
 
-// simple health-check
+
 app.get('/', (req, res) => res.send('School Payments API is running'));
 
 app.use(errorHandler);
