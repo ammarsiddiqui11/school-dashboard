@@ -4,11 +4,18 @@ import api from "../Api";
 export default function TransactionStatus() {
   const [customId, setCustomId] = useState("");
   const [status, setStatus] = useState(null);
+  const [error, setError] = useState("");
 
-  const checkStatus = () => {
-    api.get(`/payments/transaction-status/${customId}`).then((res) => {
+  const checkStatus = async () => {
+    try {
+      setError("");
+      setStatus(null);
+      const res = await api.get(`/payments/status/${customId}`);
       setStatus(res.data);
-    });
+    } catch (err) {
+      console.error("Error fetching status:", err);
+      setError("Failed to fetch status. Please check the ID or try again.");
+    }
   };
 
   return (
@@ -25,11 +32,20 @@ export default function TransactionStatus() {
         Check
       </button>
 
+      {error && (
+        <p className="text-red-600 mt-4">{error}</p>
+      )}
+
       {status && (
         <div className="mt-4 bg-white p-4 shadow rounded">
-          <p><b>Status:</b> {status.status}</p>
-          <p><b>Amount:</b> {status.order_amount}</p>
-          <p><b>Transaction Amount:</b> {status.transaction_amount}</p>
+          <h2 className="text-lg font-bold mb-2">Transaction Details</h2>
+          <p><b>Status:</b> {status.status || "N/A"}</p>
+          <p><b>Amount:</b> {status.order_amount || "N/A"}</p>
+          <p><b>Transaction Amount:</b> {status.transaction_amount || "N/A"}</p>
+          <p><b>Custom Order ID:</b> {status.custom_order_id || "N/A"}</p>
+          <p><b>Payment Mode:</b> {status.payment_mode || "N/A"}</p>
+          <p><b>Message:</b> {status.payment_message || "N/A"}</p>
+          <p><b>Time:</b> {status.payment_time ? new Date(status.payment_time).toLocaleString() : "N/A"}</p>
         </div>
       )}
     </div>

@@ -146,7 +146,8 @@ exports.handleWebhook = async (req, res, next) => {
 exports.getTransactionStatus = async (req, res, next) => {
   try {
     const { custom_order_id } = req.params;
-    const status = await OrderStatus.findOne({ custom_order_id });
+    const status = await OrderStatus.findOne({ custom_order_id })
+    .populate("collect_id");
 
     if (!status) {
       return res.status(404).json({ message: "Transaction not found" });
