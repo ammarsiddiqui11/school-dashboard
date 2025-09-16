@@ -9,6 +9,9 @@ import Register from "./Pages/Register";
 
 function App() {
   const [user, setUser] = useState(null);
+  const [darkMode, setDarkMode] = useState(
+    localStorage.getItem("theme") === "dark"
+  );
   const navigate = useNavigate();
 
   // ✅ Load user from localStorage on refresh
@@ -19,6 +22,17 @@ function App() {
     }
   }, []);
 
+  // ✅ Tailwind v4 dark mode toggle via `.dark` class
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  }, [darkMode]);
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     setUser(null);
@@ -26,8 +40,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <nav className="bg-blue-600 text-white p-4 flex justify-between items-center">
+    <div className="min-h-screen bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100 transition-colors">
+      <nav className="bg-blue-600 dark:bg-gray-800 text-white p-4 flex justify-between items-center">
         {/* Left side links */}
         <div className="space-x-4">
           <Link to="/">Dashboard</Link>
@@ -35,8 +49,16 @@ function App() {
           <Link to="/status">Check Status</Link>
         </div>
 
-        {/* Right side auth buttons */}
-        <div className="space-x-4">
+        {/* Right side actions */}
+        <div className="flex items-center space-x-4">
+          {/* Dark mode toggle */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 transition"
+          >
+            {darkMode ? "☀️ Light" : "🌙 Dark"}
+          </button>
+
           {!user ? (
             <>
               <Link to="/login">Login</Link>
@@ -45,7 +67,7 @@ function App() {
           ) : (
             <button
               onClick={handleLogout}
-              className="bg-red-500 px-3 py-1 rounded"
+              className="bg-red-500 px-3 py-1 rounded hover:bg-red-600 transition"
             >
               Logout
             </button>

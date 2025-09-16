@@ -162,12 +162,37 @@ exports.getTransactionStatus = async (req, res, next) => {
 // ✅ Get all transactions
 exports.getAllTransactions = async (req, res, next) => {
   try {
-    const statuses = await OrderStatus.find().populate("collect_id");
-    res.json(statuses);
+    // ✅ Extract query params with defaults
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const sortField = req.query.sort || "createdAt"; // default: createdAt
+    const sortOrder = req.query.order === "asc" ? 1 : -1;
+
+    const skip = (page - 1) * limit;
+
+    // ✅ Fetch transactions with sorting + pagination
+    const [transactions, total] = await Promise.all([
+      OrderStatus.find()
+        .populate("collect_id")
+        .sort({ [sortField]: sortOrder })
+        .skip(skip)
+        .limit(limit),
+      OrderStatus.countDocuments()
+    ]);
+
+    // ✅ Send structured response
+    res.json({
+      data: transactions,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+    });
   } catch (err) {
+    console.error("Error in getAllTransactions:", err.message);
     next(err);
   }
 };
+
 
 // ✅ Get transactions by school
 exports.getTransactionsBySchool = async (req, res, next) => {
