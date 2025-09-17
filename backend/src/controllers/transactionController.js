@@ -17,12 +17,12 @@ exports.getAllTransactions = async (req, res, next) => {
     const sortOrder = (req.query.order === 'asc') ? 1 : -1;
     const statusFilter = req.query.status;
 
-    // aggregation pipeline to join Order and OrderStatus
+    
     const pipeline = [
-      // join OrderStatus with Order by order._id == OrderStatus.collect_id
+      
       {
         $lookup: {
-          from: 'orderstatuses', // the collection name is pluralized by mongoose: OrderStatus -> orderstatuses
+          from: 'orderstatuses', 
           localField: '_id',
           foreignField: 'collect_id',
           as: 'statuses'
@@ -31,7 +31,7 @@ exports.getAllTransactions = async (req, res, next) => {
       { $unwind: { path: '$statuses', preserveNullAndEmptyArrays: true } },
     ];
 
-    // if status filter apply
+    
     if (statusFilter) {
       pipeline.push({
         $match: { 'statuses.status': statusFilter }

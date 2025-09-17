@@ -1,8 +1,7 @@
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 
-dotenv.config(); // load variables from .env
-
+dotenv.config(); 
 const SCHOOL_ID = process.env.SCHOOL_ID;
 const PG_KEY = process.env.PAYMENT_PG_KEY;
 

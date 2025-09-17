@@ -118,7 +118,7 @@ exports.handleWebhook = async (req, res, next) => {
 
     // ✅ Call Edviron collect-request status API
     const response = await axios.get(
-      `https://dev-vanilla.edviron.com/erp/collect-request/${searchId}`,
+      `${process.env.PAYMENT_API_ENDPOINT2}/${searchId}`,
       {
         params: {
           school_id: process.env.SCHOOL_ID,
@@ -133,7 +133,7 @@ exports.handleWebhook = async (req, res, next) => {
 
     const data = response.data;
 
-    // ✅ Update DB with the latest status
+    
     orderStatus.status = data.status || orderStatus.status;
     orderStatus.transaction_amount = data.transaction_amount || orderStatus.transaction_amount;
     orderStatus.payment_mode = data.details?.payment_mode || orderStatus.payment_mode;
@@ -156,7 +156,7 @@ exports.handleWebhook = async (req, res, next) => {
 
 
 
-// biddat
+
 exports.getTransactionStatus = async (req, res, next) => {
   try {
     const { custom_order_id } = req.params;
@@ -176,15 +176,15 @@ exports.getTransactionStatus = async (req, res, next) => {
 // ✅ Get all transactions
 exports.getAllTransactions = async (req, res, next) => {
   try {
-    // ✅ Extract query params with defaults
+    
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const sortField = req.query.sort || "createdAt"; // default: createdAt
+    const sortField = req.query.sort || "createdAt"; 
     const sortOrder = req.query.order === "asc" ? 1 : -1;
 
     const skip = (page - 1) * limit;
 
-    // ✅ Fetch transactions with sorting + pagination
+    
     const [transactions, total] = await Promise.all([
       OrderStatus.find()
         .populate("collect_id")
@@ -194,7 +194,7 @@ exports.getAllTransactions = async (req, res, next) => {
       OrderStatus.countDocuments()
     ]);
 
-    // ✅ Send structured response
+    //  Send response
     res.json({
       data: transactions,
       total,
@@ -208,7 +208,7 @@ exports.getAllTransactions = async (req, res, next) => {
 };
 
 
-// ✅ Get transactions by school
+// Get transactions by school
 exports.getTransactionsBySchool = async (req, res, next) => {
   try {
     const { schoolId } = req.params;
@@ -227,7 +227,7 @@ exports.checkPaymentStatus = async (req, res, next) => {
   try {
     const { collectId } = req.params;
 
-    // prepare payload
+    
     const payload = {
       school_id: process.env.SCHOOL_ID,
       collect_request_id: collectId,
@@ -240,7 +240,7 @@ exports.checkPaymentStatus = async (req, res, next) => {
 
     // call Edviron status API
     const response = await axios.get(
-      `https://dev-vanilla.edviron.com/erp/collect-request/${collectId}`,
+      `${process.env.PAYMENT_API_ENDPOINT2}/${collectId}`,
       {
         params: {
           school_id: process.env.SCHOOL_ID,
@@ -255,7 +255,7 @@ exports.checkPaymentStatus = async (req, res, next) => {
 
     const data = response.data;
 
-    // 🔹 Update your local OrderStatus document
+   
     const updated = await OrderStatus.findOneAndUpdate(
       { gateway_collect_id: collectId },
       {
