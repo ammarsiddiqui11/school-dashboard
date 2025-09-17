@@ -36,7 +36,7 @@ export default function SchoolTransactions() {
     <div>
       <h1 className="text-2xl font-bold mb-4">Transactions by School</h1>
 
-      {/* Input and button */}
+      
       <div className="mb-4 flex space-x-2">
         <input
           type="text"
@@ -89,7 +89,7 @@ export default function SchoolTransactions() {
                         ? "text-green-600 dark:text-green-400"
                         : tx.status === "pending"
                         ? "text-yellow-600 dark:text-yellow-400"
-                        : "text-red-600 dark:text-red-400"
+                        : "text-green-600 dark:text-green-400"
                     }`}
                   >
                     {tx.status}

@@ -67,7 +67,7 @@ export default function TransactionStatus() {
                       ? "text-green-600 dark:text-green-400"
                       : status.status === "pending"
                       ? "text-yellow-600 dark:text-yellow-400"
-                      : "text-red-600 dark:text-red-400"
+                      : "text-green-600 dark:text-green-400"
                   }`}
                 >
                   {status.status || "N/A"}

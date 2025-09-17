@@ -1,83 +1,89 @@
+const WebhookLog = require("../models/webhooklog");
+const OrderStatus = require("../models/OrderStatus");
+const Order = require("../models/Order");
+
 exports.handleWebhook = async (req, res, next) => {
   try {
     const payload = req.body;
 
-    // log the raw payload
+    console.log("📩 Webhook received:", JSON.stringify(payload, null, 2));
+
+   
     const log = new WebhookLog({ received_payload: payload });
     await log.save();
 
-    const order_info = payload?.order_info;
-    if (!order_info) {
+    
+    const orderInfo = payload.order_info || payload;
+
+   
+    const gatewayCollectId =
+      orderInfo.order_id ||
+      orderInfo.collect_request_id ||
+      orderInfo.collect_id ||
+      null;
+
+    const customOrderId =
+      orderInfo.custom_order_id && orderInfo.custom_order_id !== "NA"
+        ? orderInfo.custom_order_id
+        : null;
+
+    if (!gatewayCollectId && !customOrderId) {
       log.processed = false;
-      log.error = 'no order_info';
+      log.error = "Missing identifiers (collect_request_id/custom_order_id)";
       await log.save();
-      return res.status(400).json({ message: 'Invalid payload: no order_info' });
+      return res
+        .status(400)
+        .json({ message: "Invalid webhook payload: missing identifiers" });
     }
 
-    //  Extract identifiers
-    const order_id_field = order_info.order_id || order_info.collect_id || null;
-    let orderStatus = null;
+    
+    let orderStatus = await OrderStatus.findOne({
+      $or: [
+        { gateway_collect_id: gatewayCollectId },
+        { custom_order_id: customOrderId }
+      ]
+    });
 
-    //  First try: match by gateway_collect_id (Edviron sends this)
-    if (order_id_field) {
-      orderStatus = await OrderStatus.findOneAndUpdate(
-        { gateway_collect_id: order_id_field },
-        {
-          status: order_info.status || order_info.payment_status || 'unknown',
-          transaction_amount: order_info.transaction_amount,
-          order_amount: order_info.order_amount,
-          payment_mode: order_info.payment_mode,
-          payment_details: order_info.payment_details,
-          bank_reference: order_info.bank_reference,
-          payment_message: order_info.payment_message,
-          error_message: order_info.error_message,
-          payment_time: order_info.payment_time ? new Date(order_info.payment_time) : undefined
-        },
-        { new: true }
-      );
-    }
-
-    //  Second try: by custom_order_id
-    if (!orderStatus && order_info.custom_order_id) {
-      orderStatus = await OrderStatus.findOneAndUpdate(
-        { custom_order_id: order_info.custom_order_id },
-        { status: order_info.status },
-        { new: true }
-      );
-    }
-
-    //  If not found, create a new status entry linked to Order
     if (!orderStatus) {
+      
       let order = null;
-      if (order_id_field && order_id_field.match && order_id_field.match(/^[0-9a-fA-F]{24}$/)) {
-        order = await Order.findById(order_id_field);
-      } else if (order_info.custom_order_id) {
-        order = await Order.findOne({ custom_order_id: order_info.custom_order_id });
+
+      if (gatewayCollectId && gatewayCollectId.match(/^[0-9a-fA-F]{24}$/)) {
+        order = await Order.findById(gatewayCollectId);
+      } else if (customOrderId) {
+        order = await Order.findOne({ custom_order_id: customOrderId });
       }
 
-      if (order) {
-        const newStatus = new OrderStatus({
-          collect_id: order._id,
-          custom_order_id: order_info.custom_order_id || undefined,
-          gateway_collect_id: order_id_field,
-          status: order_info.status,
-          transaction_amount: order_info.transaction_amount,
-          order_amount: order_info.order_amount,
-          payment_mode: order_info.payment_mode,
-          payment_details: order_info.payment_details,
-          bank_reference: order_info.bank_reference,
-          payment_message: order_info.payment_message,
-          error_message: order_info.error_message,
-          payment_time: order_info.payment_time ? new Date(order_info.payment_time) : undefined
-        });
-        orderStatus = await newStatus.save();
-      }
+      orderStatus = new OrderStatus({
+        collect_id: order ? order._id : undefined,
+        custom_order_id: customOrderId || undefined,
+        gateway_collect_id: gatewayCollectId,
+      });
     }
+
+    
+    orderStatus.status = orderInfo.status || orderStatus.status;
+    orderStatus.transaction_amount =
+      orderInfo.transaction_amount || orderInfo.order_amount || orderStatus.transaction_amount;
+    orderStatus.order_amount = orderInfo.order_amount || orderStatus.order_amount;
+    orderStatus.payment_mode = orderInfo.payment_mode || orderStatus.payment_mode;
+    orderStatus.payment_details = orderInfo.payment_details || orderInfo.payemnt_details || orderStatus.payment_details;
+    orderStatus.bank_reference = orderInfo.bank_reference || orderStatus.bank_reference;
+    orderStatus.payment_message = orderInfo.payment_message || orderInfo.Payment_message || orderStatus.payment_message;
+    orderStatus.error_message = orderInfo.error_message || orderStatus.error_message;
+    orderStatus.payment_time = orderInfo.payment_time
+      ? new Date(orderInfo.payment_time)
+      : new Date();
+
+    await orderStatus.save();
 
     log.processed = true;
     await log.save();
 
-    return res.status(200).json({ message: 'Webhook processed', orderStatus });
+    return res.status(200).json({
+      message: "Webhook processed",
+      updated: orderStatus
+    });
   } catch (err) {
     console.error("Webhook error:", err.message);
     next(err);

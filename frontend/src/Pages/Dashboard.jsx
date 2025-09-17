@@ -116,7 +116,8 @@ function Dashboard() {
                       ? "text-green-600 dark:text-green-400"
                       : txn.status === "pending"
                       ? "text-yellow-600 dark:text-yellow-400"
-                      : "text-red-600 dark:text-red-400"
+                      
+                      : "text-green-600 dark:text-green-400"
                   }`}
                 >
                   {txn.status}

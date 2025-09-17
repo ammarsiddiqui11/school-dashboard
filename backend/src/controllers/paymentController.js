@@ -216,12 +216,12 @@ exports.checkPaymentStatus = async (req, res, next) => {
     // prepare payload
     const payload = {
       school_id: process.env.SCHOOL_ID,
-      collect_request_id: collectId
+      collect_request_id: collectId,
     };
 
     // sign with PG key
     const sign = jwt.sign(payload, process.env.PAYMENT_PG_KEY, {
-      algorithm: "HS256"
+      algorithm: "HS256",
     });
 
     // call Edviron status API
@@ -230,18 +230,45 @@ exports.checkPaymentStatus = async (req, res, next) => {
       {
         params: {
           school_id: process.env.SCHOOL_ID,
-          sign
+          sign,
         },
         headers: {
           Authorization: `Bearer ${process.env.PAYMENT_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    res.json(response.data);
+    const data = response.data;
+
+    // 🔹 Update your local OrderStatus document
+    const updated = await OrderStatus.findOneAndUpdate(
+      { gateway_collect_id: collectId },
+      {
+        status: data.status,
+        transaction_amount: data.transaction_amount || data.amount,
+        order_amount: data.amount,
+        payment_mode: data.details?.payment_mode,
+        payment_details: data.details,
+        bank_reference: data.details?.bank_ref,
+        payment_message: data.payment_message || null,
+        payment_time: data.payment_time
+          ? new Date(data.payment_time)
+          : new Date(),
+      },
+      { new: true }
+    );
+
+    return res.json({
+      message: "Status synced with Edviron",
+      edvironResponse: data,
+      updated,
+    });
   } catch (err) {
     console.error(err.response?.data || err.message);
-    res.status(500).json({ message: "Error checking status", error: err.message });
+    res
+      .status(500)
+      .json({ message: "Error checking status", error: err.message });
   }
 };
+
