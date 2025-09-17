@@ -14,7 +14,7 @@ function Dashboard() {
     setLoading(true);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/payments/transactions?page=${page}&limit=${limit}&sort=${sort}&order=${order}`,
+        `${import.meta.env.VITE_API_URL}/api/payments/transactions?page=${page}&limit=${limit}&sort=${sort}&order=${order}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

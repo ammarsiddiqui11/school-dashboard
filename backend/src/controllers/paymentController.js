@@ -2,6 +2,7 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const Order = require('../models/Order');
 const OrderStatus = require('../models/OrderStatus');
+const { generateSignForStatus,generateSignForCreate } = require("../utils/signHelper");
 
 /**
  * createPayment:
@@ -11,6 +12,7 @@ const OrderStatus = require('../models/OrderStatus');
  *  - store gateway_collect_id in OrderStatus
  *  - return payment link to frontend
  */
+
 exports.createPayment = async (req, res, next) => {
   try {
     const {
@@ -18,71 +20,58 @@ exports.createPayment = async (req, res, next) => {
       trustee_id,
       student_info,
       order_amount,
-      custom_order_id
+      custom_order_id,
+      redirect_url,
     } = req.body;
 
-    // minimal validation
+    // 1️⃣ Validation
     if (!order_amount || !student_info) {
-      return res.status(400).json({ message: 'Missing order_amount or student_info' });
+      return res.status(400).json({ message: "Missing order_amount or student_info" });
     }
 
-    // Create an Order document
+    // 2️⃣ Create Order
     const order = new Order({
       school_id,
       trustee_id,
       student_info,
       custom_order_id,
-      gateway_name: "Edviron"
+      gateway_name: "Edviron",
     });
     await order.save();
 
-    // create initial order status entry with pending
-    const orderStatus = new OrderStatus({
+    // 3️⃣ Create initial OrderStatus (pending)
+    let orderStatus = new OrderStatus({
       collect_id: order._id,
       order_amount,
-      status: 'pending',
-      custom_order_id: custom_order_id || undefined
+      status: "PENDING",
+      custom_order_id: custom_order_id || undefined,
     });
     await orderStatus.save();
 
-    // ✅ Edviron requires JWT with { school_id, amount, callback_url }
-    const payloadForSign = {
-      school_id,
-      amount: String(order_amount), // must be string
-      callback_url: req.body.redirect_url || "https://google.com"
-    };
+    // 4️⃣ Payload for Edviron
+    const callback_url = redirect_url || `${process.env.BASE_URL}/api/webhook`;
+    const payloadForSign = { school_id, amount: String(order_amount), callback_url };
 
-    // ✅ Sign with PG secret key
-    const sign = jwt.sign(payloadForSign, process.env.PAYMENT_PG_KEY, {
-      algorithm: "HS256"
+    // ✅ Generate sign
+    const sign = generateSignForCreate(payloadForSign);
+
+    const requestBody = { ...payloadForSign, sign };
+
+    // 5️⃣ Call Edviron API
+    const response = await axios.post(process.env.PAYMENT_API_ENDPOINT, requestBody, {
+      headers: {
+        Authorization: `Bearer ${process.env.PAYMENT_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 15000,
     });
 
-    // ✅ Build request body as per docs
-    const requestBody = {
-      school_id,
-      amount: String(order_amount),
-      callback_url: payloadForSign.callback_url,
-      sign
-    };
+    // 6️⃣ Extract values
+    const { collect_request_id, collect_request_url } = response.data;
 
-    // ✅ Call Edviron API
-    const response = await axios.post(
-      process.env.PAYMENT_API_ENDPOINT, // should be https://dev-vanilla.edviron.com/erp/create-collect-request
-      requestBody,
-      {
-        headers: {
-          "Authorization": `Bearer ${process.env.PAYMENT_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 15000
-      }
-    );
-
-    // ✅ Extract values
-    const { collect_request_id, Collect_request_url } = response.data;
-
-    // 🔹 Save gateway_collect_id in OrderStatus (for webhook lookup)
+    // 7️⃣ Update OrderStatus with gateway_collect_id
     orderStatus.gateway_collect_id = collect_request_id;
+    orderStatus.payment_details = response.data;
     await orderStatus.save();
 
     return res.status(201).json({
@@ -90,57 +79,82 @@ exports.createPayment = async (req, res, next) => {
       order_id: order._id,
       local_collect_id: orderStatus._id,
       gateway_collect_id: collect_request_id,
-      paymentLink: Collect_request_url,
-      rawResponse: response.data
+      paymentLink: collect_request_url, // lowercase fixed
+      rawResponse: response.data,
     });
   } catch (err) {
     console.error("Payment error:", err.response?.data || err.message);
     next(err);
   }
-
 };
+
+
+
 exports.handleWebhook = async (req, res, next) => {
   try {
     const payload = req.body;
-
     console.log("📩 Webhook received:", payload);
 
-    // Extract fields (depends on Edviron’s webhook structure)
+    // Extract identifiers from webhook
     const orderInfo = payload.order_info || {};
-
-    // Accept either order_id or collect_request_id
     const searchId = orderInfo.order_id || orderInfo.collect_request_id;
 
     if (!searchId) {
-      return res.status(400).json({ message: "Invalid webhook payload: missing order_id or collect_request_id" });
+      return res.status(400).json({
+        message: "Invalid webhook payload: missing order_id or collect_request_id",
+      });
     }
 
-    // Find OrderStatus by gateway_collect_id
-    const orderStatus = await OrderStatus.findOne({
-      gateway_collect_id: searchId
-    });
-
+    // Find existing OrderStatus by gateway_collect_id
+    const orderStatus = await OrderStatus.findOne({ gateway_collect_id: searchId });
     if (!orderStatus) {
-      return res.status(404).json({ message: `Order status not found for gateway_collect_id=${searchId}` });
+      return res.status(404).json({
+        message: `Order status not found for gateway_collect_id=${searchId}`,
+      });
     }
 
-    // Update with webhook data
-    orderStatus.status = orderInfo.status || orderStatus.status;
-    orderStatus.transaction_amount = orderInfo.transaction_amount || orderStatus.transaction_amount;
-    orderStatus.gateway = orderInfo.gateway || orderStatus.gateway;
-    orderStatus.bank_reference = orderInfo.bank_reference || orderStatus.bank_reference;
-    orderStatus.payment_mode = orderInfo.payment_mode || orderStatus.payment_mode;
-    orderStatus.payment_message = orderInfo.payment_message || orderStatus.payment_message;
-    orderStatus.payment_time = orderInfo.payment_time || orderStatus.payment_time;
+    // ✅ Generate fresh sign for Edviron status API
+    const sign = generateSignForStatus(searchId);
+
+    // ✅ Call Edviron collect-request status API
+    const response = await axios.get(
+      `https://dev-vanilla.edviron.com/erp/collect-request/${searchId}`,
+      {
+        params: {
+          school_id: process.env.SCHOOL_ID,
+          sign,
+        },
+        headers: {
+          Authorization: `Bearer ${process.env.PAYMENT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const data = response.data;
+
+    // ✅ Update DB with the latest status
+    orderStatus.status = data.status || orderStatus.status;
+    orderStatus.transaction_amount = data.transaction_amount || orderStatus.transaction_amount;
+    orderStatus.payment_mode = data.details?.payment_mode || orderStatus.payment_mode;
+    orderStatus.bank_reference = data.details?.bank_ref || orderStatus.bank_reference;
+    orderStatus.payment_details = data.details || orderStatus.payment_details;
+    orderStatus.payment_time = new Date();
 
     await orderStatus.save();
 
-    return res.status(200).json({ message: "Webhook processed", updated: orderStatus });
+    return res.status(200).json({
+      message: "Webhook processed & status synced",
+      edvironResponse: data,
+      updated: orderStatus,
+    });
   } catch (err) {
-    console.error("Webhook error:", err.message);
+    console.error("Webhook error:", err.response?.data || err.message);
     next(err);
   }
 };
+
+
 
 // biddat
 exports.getTransactionStatus = async (req, res, next) => {
